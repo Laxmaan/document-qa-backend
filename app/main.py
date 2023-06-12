@@ -36,6 +36,13 @@ from app.query_data import get_chain
 from app.schemas import ChatResponse
 
 
+### Setup Azure 
+import os
+os.environ["OPENAI_API_TYPE"] = "azure"
+os.environ["OPENAI_API_VERSION"] = "2023-03-15-preview"
+os.environ["OPENAI_API_BASE"] = "..."
+os.environ["OPENAI_API_KEY"] = "..."
+
 # #### Langchain and Chroma setup 
 
 # chroma_client = chromadb.Client)
