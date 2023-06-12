@@ -22,15 +22,18 @@ from langchain.chains.conversational_retrieval.prompts import QA_PROMPT, CONDENS
 from collections import defaultdict
 from time import time
 from pydantic import BaseModel
+from app.utils import PDF_STORE_ROOT
+
+
 con = sqlite3.connect("filemap.db")
 
-from utils import add_document_to_collection, add_documents_to_collection, get_chroma_Store_location
+from app.utils import add_document_to_collection, add_documents_to_collection, get_chroma_Store_location
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
-from callback import QuestionGenCallbackHandler, StreamingLLMCallbackHandler
-from query_data import get_chain
-from schemas import ChatResponse
+from app.callback import QuestionGenCallbackHandler, StreamingLLMCallbackHandler
+from app.query_data import get_chain
+from app.schemas import ChatResponse
 
 
 # #### Langchain and Chroma setup 
@@ -56,7 +59,7 @@ app.add_middleware(CORSMiddleware, allow_origins=origins, allow_headers = ["*"],
 @app.get("/list")
 def list_files():
     logging.info("GOT LIST")
-    from utils import PDF_STORE_ROOT
+    
     DATA_DIR = PDF_STORE_ROOT
     res = {}
     try:
