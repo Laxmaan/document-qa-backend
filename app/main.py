@@ -23,7 +23,8 @@ from collections import defaultdict
 from time import time
 from pydantic import BaseModel
 from app.utils import PDF_STORE_ROOT
-
+import openai
+from loguru import logger
 
 con = sqlite3.connect("filemap.db")
 
@@ -38,16 +39,21 @@ from app.schemas import ChatResponse
 
 ### Setup Azure 
 import os
-os.environ["OPENAI_API_TYPE"] = "azure"
-os.environ["OPENAI_API_VERSION"] = "2023-03-15-preview"
-os.environ["OPENAI_API_BASE"] = "..."
-os.environ["OPENAI_API_KEY"] = "..."
+# os.environ["OPENAI_API_TYPE"] = openai.api_type = "azure"
+# os.environ["OPENAI_API_VERSION"] = openai.api_version = "2022-12-01" #"2023-03-15-preview"
+# os.environ["OPENAI_API_BASE"] = openai.api_base =  "https://idocopenaigpt.openai.azure.com/"
+# os.environ["OPENAI_API_KEY"] = openai.api_key = "95776649ac7a4b048c834003fd315264"#os.getenv("AZUREOPENAI_API_KEY")
+
+
 
 # #### Langchain and Chroma setup 
 
 # chroma_client = chromadb.Client)
 
+# embedding_func = OpenAIEmbeddings( deployment="idocembedd")
+
 embedding_func = OpenAIEmbeddings()
+
 
 # chromadb_settings = Settings(chroma_api_impl="rest",
 #                                         chroma_server_host="localhost",
@@ -62,10 +68,14 @@ app.add_middleware(CORSMiddleware, allow_origins=origins, allow_headers = ["*"],
 
 ###
 
+LOG_DIR = Path("logs")
+LOG_DIR.mkdir(exist_ok=True, parents=True)
+
+logger.add(LOG_DIR / "backend_{time}.log", rotation="12:00", enqueue=True)
 
 @app.get("/list")
 def list_files():
-    logging.info("GOT LIST")
+    logger.info("GOT LIST")
     
     DATA_DIR = PDF_STORE_ROOT
     res = {}
@@ -79,15 +89,18 @@ def list_files():
                     res[x.name].append(item.name)
     except Exception as e:
         print(e)
+        logger.exception(e)
         res['status'] = 'failure'
         res['message'] = str(e)
+        logger.exception(e)
 
+    logger.info(res)
     return res
 
 
-@app.get("/")
-def read_root():
-    return {"Hello": "World"}
+# @app.get("/")
+# def read_root():
+#     return {"Hello": "World"}
 
 @app.get("/upload/", response_class=HTMLResponse)
 async def upload(request: Request):
@@ -148,14 +161,12 @@ async def create_upload_file( collection: Annotated[str, Form()],files:Annotated
         return retval
 
 
-class ChatMessage(BaseModel):
-    query:str
-    collection:str
 
 
 @app.websocket("/chat/{collection}")
+@logger.catch
 async def chat_over_collection(websocket: WebSocket, collection: str):
-    print(collection)
+    logger.info(f" Chatting over {collection}")
     await websocket.accept()
     try:
         question_handler = QuestionGenCallbackHandler(websocket)
@@ -166,44 +177,23 @@ async def chat_over_collection(websocket: WebSocket, collection: str):
                     persist_directory=get_chroma_Store_location(collection)
                     )
         qa_chain = get_chain(vectorstore, question_handler, stream_handler)
-        # Use the below line instead of the above line to enable tracing
-        # Ensure `langchain-server` is running
-        # qa_chain = get_chain(vectorstore, question_handler, stream_handler, tracing=True)
-
-
-        # query = "Who are you?"
-        # collection_name = collection
-        # llm = ChatOpenAI(temperature=0, streaming=True)
-
-        # doc_chain = load_qa_with_sources_chain(llm, chain_type="map_reduce")
-        # question_generator = LLMChain(llm=llm, prompt=CONDENSE_QUESTION_PROMPT)
-
         
-        # qa = ConversationalRetrievalChain(retriever = vectordb.as_retriever(),
-        #                                     #memory=memory,
-        #                                     return_source_documents=False,
-        #                                     question_generator=question_generator,
-        #                                     combine_docs_chain=doc_chain,)
-        
-        # query = "What is the Top-5 Error of various models? Give a verbose answer with references"
-        # result = qa({"question": query, "chat_history": chat_history})
-
-        # for x in result:
-        #     print(x)
-        #     print(result[x])
-
-        # ret = {"status":"success"}
-        # for k in result:
-        #     ret[k] = result[k]
-        # return ret
+  
 
         while True:
-            question = await websocket.receive_text()
-            resp = ChatResponse(sender="you", message=question, type="stream")
+            data = await websocket.receive_text()
+            data = json.loads(data)
+            logger.info(f"Received data ={data}")
+            question = data['question']
+            seq = int(data['seq'])
+            resp = ChatResponse(sender="you", message=question, type="stream", seq = seq)
+            logger.info(resp)
             await websocket.send_json(resp.dict())
 
             # Construct a response
-            start_resp = ChatResponse(sender="bot", message="", type="start")
+            start_resp = ChatResponse(sender="bot", message="", type="start",seq=seq)
+            logger.info("Begin bot message")
+            logger.debug(start_resp)
             await websocket.send_json(start_resp.dict())
 
             result = await qa_chain.acall(
@@ -211,19 +201,21 @@ async def chat_over_collection(websocket: WebSocket, collection: str):
             )
             chat_history.append((question, result["answer"]))
 
-            end_resp = ChatResponse(sender="bot", message="", type="end")
+            end_resp = ChatResponse(sender="bot", message="", type="end",seq=seq)
+            logger.debug(end_resp)
             await websocket.send_json(end_resp.dict())
         
 
     except WebSocketDisconnect:
-            logging.info("websocket disconnect")
+            logger.exception("websocket disconnect")
             
     except Exception as e:
-        logging.error(e)
+        logger.exception(e)
         resp = ChatResponse(
                 sender="bot",
-                message="Sorry, something went wrong. Try again.",
+                message=f"Sorry, something went wrong. Try again. \n\n{e}",
                 type="error",
+                seq = -2
             )
         await websocket.send_json(resp.dict())
         return {"status":"fail", "message":str(e)}

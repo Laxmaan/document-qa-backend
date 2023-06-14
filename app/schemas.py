@@ -8,6 +8,7 @@ class ChatResponse(BaseModel):
     sender: str
     message: str
     type: str
+    seq: int
 
     @validator("sender")
     def sender_must_be_bot_or_you(cls, v):

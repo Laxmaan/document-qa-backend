@@ -1,4 +1,5 @@
 """Create a ConversationalRetrievalChain for question/answering."""
+import os
 from langchain.callbacks.manager import AsyncCallbackManager
 from langchain.callbacks.tracers import LangChainTracer
 from langchain.chains import ConversationalRetrievalChain
@@ -8,7 +9,7 @@ from langchain.chains.llm import LLMChain
 from langchain.chains.question_answering import load_qa_chain
 from langchain.chains.qa_with_sources import load_qa_with_sources_chain
 from langchain.chat_models import ChatOpenAI
-from langchain.llms import OpenAI
+from langchain.llms.openai import OpenAI, AzureOpenAI
 from langchain.vectorstores.base import VectorStore
 
 
@@ -28,13 +29,36 @@ def get_chain(
         question_manager.add_handler(tracer)
         stream_manager.add_handler(tracer)
 
+    # question_gen_llm = AzureOpenAI(
+    #     deployment_name='idocgptmodels',
+    #     openai_api_base="https://idocopenaigpt.openai.azure.com/",
+    #     openai_api_key=os.environ['AZUREOPENAI_API_KEY'],
+    #     # model="gpt-35-turbo",
+    #     # engine='text-davinci-003',
+    #     temperature=0,
+    #     verbose=True,
+    #     streaming=True,
+    #     callback_manager=question_manager,
+    # )
+    # streaming_llm = AzureOpenAI(
+    #     deployment_name='idocgptmodels',
+    #     # model="gpt-35-turbo",
+    #     streaming=True,
+    #     callback_manager=stream_manager,
+    #     verbose=True,
+    #     temperature=0,
+    # )
+
     question_gen_llm = OpenAI(
-        temperature=0,
-        verbose=True,
+        openai_api_key=os.environ['OPENAI_API_KEY_BASE'],
         streaming=True,
         callback_manager=question_manager,
+        verbose=True,
+        temperature=0,
     )
+
     streaming_llm = OpenAI(
+        openai_api_key=os.environ['OPENAI_API_KEY_BASE'],
         streaming=True,
         callback_manager=stream_manager,
         verbose=True,
